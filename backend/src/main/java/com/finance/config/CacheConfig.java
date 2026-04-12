@@ -3,9 +3,11 @@ package com.finance.config;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -19,6 +21,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 @EnableCaching
+@Slf4j
 public class CacheConfig {
 
     public static final String REPORTS_CACHE = "reports";
@@ -53,5 +56,34 @@ public class CacheConfig {
                 .withInitialCacheConfigurations(cacheConfigurations)
                 .transactionAware()
                 .build();
+    }
+
+    @Bean
+    public CacheErrorHandler cacheErrorHandler() {
+        return new CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException exception, org.springframework.cache.Cache cache, Object key) {
+                log.warn("Cache GET failed for cache {} and key {}", cacheName(cache), key, exception);
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception, org.springframework.cache.Cache cache, Object key, Object value) {
+                log.warn("Cache PUT failed for cache {} and key {}", cacheName(cache), key, exception);
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception, org.springframework.cache.Cache cache, Object key) {
+                log.warn("Cache EVICT failed for cache {} and key {}", cacheName(cache), key, exception);
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception, org.springframework.cache.Cache cache) {
+                log.warn("Cache CLEAR failed for cache {}", cacheName(cache), exception);
+            }
+
+            private String cacheName(org.springframework.cache.Cache cache) {
+                return cache == null ? "unknown" : cache.getName();
+            }
+        };
     }
 }

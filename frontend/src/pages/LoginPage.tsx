@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { loginSchema, type LoginFormValues } from "../features/auth/schema";
@@ -16,6 +17,7 @@ const guestCredentials: LoginFormValues = {
 export const LoginPage = () => {
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
+  const [showWarmupMessage, setShowWarmupMessage] = useState(false);
   const {
     register,
     handleSubmit,
@@ -38,6 +40,21 @@ export const LoginPage = () => {
   const apiError = mutation.isError
     ? extractApiError(mutation.error, "Login failed. Check your credentials and API availability.")
     : null;
+
+  useEffect(() => {
+    if (!mutation.isPending) {
+      setShowWarmupMessage(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowWarmupMessage(true);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [mutation.isPending]);
 
   const handleGuestLogin = () => {
     setValue("email", guestCredentials.email, { shouldDirty: true, shouldTouch: true });
@@ -70,7 +87,16 @@ export const LoginPage = () => {
               </Link>
             </div>
           </div>
-          {apiError ? <p className="text-sm text-danger">{apiError.message}</p> : null}
+          {mutation.isPending && showWarmupMessage ? (
+            <div className="flex items-start gap-3 rounded-2xl border border-accent/15 bg-gradient-to-r from-accent/10 via-white to-accent2/10 px-4 py-3 text-sm text-ink shadow-sm">
+              <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-accent/25 border-t-accent" />
+              <div>
+                <p className="font-semibold text-ink">🚀 Starting server (first time may take 30 seconds)</p>
+                <p className="mt-1 text-xs text-muted">This usually happens when the backend is waking up from idle.</p>
+              </div>
+            </div>
+          ) : null}
+          {!mutation.isPending && apiError ? <p className="text-sm text-danger">{apiError.message}</p> : null}
           <button
             type="submit"
             disabled={mutation.isPending}

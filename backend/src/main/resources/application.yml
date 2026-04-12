@@ -45,3 +45,15 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  health:
+    redis:
+      enabled: false
