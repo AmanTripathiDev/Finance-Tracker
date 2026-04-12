@@ -9,7 +9,9 @@ import com.finance.dto.ReportDtos.Point;
 import com.finance.entities.Budget;
 import com.finance.entities.RecurringFrequency;
 import com.finance.entities.RecurringTransaction;
+import com.finance.entities.Transaction;
 import com.finance.entities.TransactionType;
+import com.finance.exception.BadRequestException;
 import com.finance.repositories.AccountRepository;
 import com.finance.repositories.BudgetRepository;
 import com.finance.repositories.RecurringTransactionRepository;
@@ -24,6 +26,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
@@ -44,15 +47,13 @@ public class ReportService {
     @Cacheable(cacheNames = "reports", key = "'category-spend:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public CategorySpendResponse categorySpend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
-        var range = normalizeRange(startDate, endDate);
+        LocalDate[] range = normalizeRange(startDate, endDate);
         Map<String, BigDecimal> grouped = new LinkedHashMap<>();
-        transactionRepository.findByUserIdAndTransactionDateBetween(userId, range[0], range[1]).stream()
+
+        findTransactionsInRange(userId, range[0], range[1]).stream()
                 .filter(tx -> tx.getType() == TransactionType.EXPENSE)
-                .forEach(tx -> grouped.merge(
-                        tx.getCategory() == null ? "Uncategorized" : tx.getCategory().getName(),
-                        tx.getAmount(),
-                        BigDecimal::add
-                ));
+                .forEach(tx -> grouped.merge(categoryName(tx), amountOrZero(tx.getAmount()), BigDecimal::add));
+
         List<Map<String, Object>> items = grouped.entrySet().stream()
                 .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
                 .map(entry -> Map.<String, Object>of("category", entry.getKey(), "amount", entry.getValue()))
@@ -65,23 +66,25 @@ public class ReportService {
     @Cacheable(cacheNames = "reports", key = "'income-vs-expense:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public List<IncomeExpenseTrendItem> incomeExpenseTrend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
-        var range = normalizeRange(startDate, endDate);
+        LocalDate[] range = normalizeRange(startDate, endDate);
         Map<LocalDate, IncomeExpenseTrendAccumulator> grouped = new LinkedHashMap<>();
-        transactionRepository.findByUserIdAndTransactionDateBetween(userId, range[0], range[1]).stream()
-                .sorted(Comparator.comparing(com.finance.entities.Transaction::getTransactionDate))
+
+        findTransactionsInRange(userId, range[0], range[1]).stream()
+                .filter(tx -> tx.getTransactionDate() != null)
+                .sorted(Comparator.comparing(Transaction::getTransactionDate))
                 .forEach(tx -> {
+                    if (tx.getType() == null) {
+                        return;
+                    }
+                    IncomeExpenseTrendAccumulator accumulator = grouped.computeIfAbsent(
+                            tx.getTransactionDate(),
+                            date -> new IncomeExpenseTrendAccumulator()
+                    );
+                    BigDecimal amount = amountOrZero(tx.getAmount());
                     if (tx.getType() == TransactionType.INCOME) {
-                        IncomeExpenseTrendAccumulator accumulator = grouped.computeIfAbsent(
-                                tx.getTransactionDate(),
-                                date -> new IncomeExpenseTrendAccumulator()
-                        );
-                        accumulator.income = accumulator.income.add(tx.getAmount());
+                        accumulator.income = accumulator.income.add(amount);
                     } else if (tx.getType() == TransactionType.EXPENSE) {
-                        IncomeExpenseTrendAccumulator accumulator = grouped.computeIfAbsent(
-                                tx.getTransactionDate(),
-                                date -> new IncomeExpenseTrendAccumulator()
-                        );
-                        accumulator.expense = accumulator.expense.add(tx.getAmount());
+                        accumulator.expense = accumulator.expense.add(amount);
                     }
                 });
 
@@ -94,17 +97,22 @@ public class ReportService {
     @Cacheable(cacheNames = "reports", key = "'account-balance-trend:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public List<AccountBalanceTrendItem> accountBalanceTrend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
-        var range = normalizeRange(startDate, endDate);
+        LocalDate[] range = normalizeRange(startDate, endDate);
         return accountRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(Objects::nonNull)
                 .map(account -> {
-                    BigDecimal running = account.getOpeningBalance();
+                    BigDecimal running = amountOrZero(account.getOpeningBalance());
                     List<Point> points = new ArrayList<>();
-                    var transactions = transactionRepository.findByUserIdAndAccountIdOrderByTransactionDateAsc(userId, account.getId());
-                    for (var tx : transactions) {
+                    List<Transaction> transactions = transactionRepository.findByUserIdAndAccountIdOrderByTransactionDateAsc(userId, account.getId());
+                    for (Transaction tx : transactions) {
+                        if (tx == null || tx.getTransactionDate() == null || tx.getType() == null) {
+                            continue;
+                        }
+                        BigDecimal amount = amountOrZero(tx.getAmount());
                         if (tx.getType() == TransactionType.INCOME || tx.getType() == TransactionType.TRANSFER_IN) {
-                            running = running.add(tx.getAmount());
+                            running = running.add(amount);
                         } else {
-                            running = running.subtract(tx.getAmount());
+                            running = running.subtract(amount);
                         }
                         if (!tx.getTransactionDate().isBefore(range[0]) && !tx.getTransactionDate().isAfter(range[1])) {
                             points.add(new Point(tx.getTransactionDate(), running));
@@ -129,13 +137,12 @@ public class ReportService {
         LocalDate previousStart = previousMonth.atDay(1);
         LocalDate previousEnd = previousMonth.atEndOfMonth();
 
-        var currentTransactions = transactionRepository.findByUserIdAndTransactionDateBetween(userId, currentStart, currentEnd);
+        List<Transaction> currentTransactions = findTransactionsInRange(userId, currentStart, currentEnd);
 
         List<InsightItem> insights = new ArrayList<>();
         addOverspendingInsight(insights, currentTransactions);
         addBudgetInsights(insights, userId, currentMonth, currentStart, currentEnd);
         addMonthOverMonthInsight(insights, userId, currentStart, currentEnd, previousStart, previousEnd);
-
         ensureMinimumInsights(insights);
 
         return insights.stream().limit(5).toList();
@@ -150,22 +157,23 @@ public class ReportService {
         LocalDate horizonEnd = today.plusDays(horizonDays - 1L);
 
         BigDecimal currentBalance = accountRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(account -> account.getCurrentBalance() == null ? BigDecimal.ZERO : account.getCurrentBalance())
+                .filter(Objects::nonNull)
+                .map(account -> amountOrZero(account.getCurrentBalance()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal projectedRecurringNet = recurringTransactionRepository.findByUserIdOrderByNextRunDateAsc(userId).stream()
+                .filter(Objects::nonNull)
                 .map(recurring -> projectedRecurringContribution(recurring, today, horizonEnd))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         LocalDate spendStart = today.minusDays(horizonDays - 1L);
-        BigDecimal totalRecentExpense = transactionRepository.findByUserIdAndTransactionDateBetween(userId, spendStart, today).stream()
+        BigDecimal totalRecentExpense = findTransactionsInRange(userId, spendStart, today).stream()
                 .filter(tx -> tx.getType() == TransactionType.EXPENSE)
-                .map(com.finance.entities.Transaction::getAmount)
+                .map(Transaction::getAmount)
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal averageDailySpending = totalRecentExpense
-                .divide(BigDecimal.valueOf(horizonDays), 2, RoundingMode.HALF_UP);
-
+        BigDecimal averageDailySpending = totalRecentExpense.divide(BigDecimal.valueOf(horizonDays), 2, RoundingMode.HALF_UP);
         BigDecimal projectedVariableExpense = averageDailySpending.multiply(BigDecimal.valueOf(horizonDays));
         BigDecimal predictedBalance = currentBalance
                 .add(projectedRecurringNet)
@@ -182,7 +190,10 @@ public class ReportService {
     }
 
     private BigDecimal projectedRecurringContribution(RecurringTransaction recurring, LocalDate rangeStart, LocalDate rangeEnd) {
-        if (recurring.getNextRunDate() == null || recurring.getNextRunDate().isAfter(rangeEnd)) {
+        if (recurring.getNextRunDate() == null || recurring.getType() == null || recurring.getAmount() == null) {
+            return BigDecimal.ZERO;
+        }
+        if (recurring.getNextRunDate().isAfter(rangeEnd)) {
             return BigDecimal.ZERO;
         }
         LocalDate effectiveEnd = recurring.getEndDate() == null || recurring.getEndDate().isAfter(rangeEnd)
@@ -195,7 +206,7 @@ public class ReportService {
         LocalDate runDate = recurring.getNextRunDate();
         while (runDate.isBefore(rangeStart)) {
             runDate = nextRunDate(runDate, recurring.getFrequency());
-            if (runDate.isAfter(effectiveEnd)) {
+            if (runDate == null || runDate.isAfter(effectiveEnd)) {
                 return BigDecimal.ZERO;
             }
         }
@@ -204,6 +215,9 @@ public class ReportService {
         while (!runDate.isAfter(effectiveEnd)) {
             occurrences++;
             runDate = nextRunDate(runDate, recurring.getFrequency());
+            if (runDate == null) {
+                break;
+            }
         }
 
         BigDecimal signedAmount = switch (recurring.getType()) {
@@ -215,6 +229,9 @@ public class ReportService {
     }
 
     private LocalDate nextRunDate(LocalDate date, RecurringFrequency frequency) {
+        if (date == null || frequency == null) {
+            return null;
+        }
         return switch (frequency) {
             case DAILY -> date.plusDays(1);
             case WEEKLY -> date.plusWeeks(1);
@@ -256,14 +273,13 @@ public class ReportService {
         }
     }
 
-    private void addOverspendingInsight(List<InsightItem> insights, List<com.finance.entities.Transaction> transactions) {
+    private void addOverspendingInsight(List<InsightItem> insights, List<Transaction> transactions) {
         Map<String, BigDecimal> expenseByCategory = new LinkedHashMap<>();
-        for (var tx : transactions) {
-            if (tx.getType() != TransactionType.EXPENSE) {
+        for (Transaction tx : transactions) {
+            if (tx == null || tx.getType() != TransactionType.EXPENSE) {
                 continue;
             }
-            String categoryName = tx.getCategory() == null ? "Uncategorized" : tx.getCategory().getName();
-            expenseByCategory.merge(categoryName, tx.getAmount(), BigDecimal::add);
+            expenseByCategory.merge(categoryName(tx), amountOrZero(tx.getAmount()), BigDecimal::add);
         }
 
         expenseByCategory.entrySet().stream()
@@ -292,20 +308,24 @@ public class ReportService {
         int riskInsightsAdded = 0;
 
         for (Budget budget : budgets) {
-            BigDecimal spent = transactionRepository.sumAmountByUserIdAndCategoryIdAndTypeAndTransactionDateBetween(
+            if (budget == null || budget.getCategory() == null || budget.getCategory().getId() == null) {
+                continue;
+            }
+            BigDecimal spent = amountOrZero(transactionRepository.sumAmountByUserIdAndCategoryIdAndTypeAndTransactionDateBetween(
                     userId,
                     budget.getCategory().getId(),
                     TransactionType.EXPENSE,
                     currentStart,
                     currentEnd
-            );
-            if (budget.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            ));
+            BigDecimal budgetAmount = amountOrZero(budget.getAmount());
+            if (budgetAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
 
             BigDecimal utilization = spent
                     .multiply(BigDecimal.valueOf(100))
-                    .divide(budget.getAmount(), 1, RoundingMode.HALF_UP);
+                    .divide(budgetAmount, 1, RoundingMode.HALF_UP);
 
             if (utilization.compareTo(BigDecimal.valueOf(100)) >= 0) {
                 hasRisk = true;
@@ -334,7 +354,7 @@ public class ReportService {
                                     budget.getCategory().getName(),
                                     utilization.toPlainString(),
                                     formatCurrency(spent),
-                                    formatCurrency(budget.getAmount())
+                                    formatCurrency(budgetAmount)
                             ),
                             "MEDIUM"
                     ));
@@ -408,22 +428,49 @@ public class ReportService {
     }
 
     private BigDecimal totalExpenseForRange(UUID userId, LocalDate startDate, LocalDate endDate) {
-        return transactionRepository.findByUserIdAndTransactionDateBetween(userId, startDate, endDate).stream()
+        return findTransactionsInRange(userId, startDate, endDate).stream()
                 .filter(tx -> tx.getType() == TransactionType.EXPENSE)
-                .map(com.finance.entities.Transaction::getAmount)
+                .map(Transaction::getAmount)
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private List<Transaction> findTransactionsInRange(UUID userId, LocalDate startDate, LocalDate endDate) {
+        return transactionRepository.findByUserIdAndTransactionDateBetween(userId, startDate, endDate).stream()
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
     private String formatCurrency(BigDecimal amount) {
-        return "$" + amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        return "$" + amountOrZero(amount).setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private LocalDate[] normalizeRange(LocalDate startDate, LocalDate endDate) {
         if (startDate != null && endDate != null) {
+            if (startDate.isAfter(endDate)) {
+                throw new BadRequestException("startDate must be on or before endDate");
+            }
             return new LocalDate[]{startDate, endDate};
+        }
+        if (startDate != null) {
+            return new LocalDate[]{startDate, startDate};
+        }
+        if (endDate != null) {
+            return new LocalDate[]{endDate, endDate};
         }
         YearMonth current = YearMonth.now();
         return new LocalDate[]{current.atDay(1), current.atEndOfMonth()};
+    }
+
+    private BigDecimal amountOrZero(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private String categoryName(Transaction tx) {
+        if (tx.getCategory() == null || tx.getCategory().getName() == null || tx.getCategory().getName().isBlank()) {
+            return "Uncategorized";
+        }
+        return tx.getCategory().getName();
     }
 
     private static class IncomeExpenseTrendAccumulator {

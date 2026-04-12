@@ -5,6 +5,7 @@ import com.finance.dto.ReportDtos.CategorySpendResponse;
 import com.finance.dto.ReportDtos.FutureBalancePredictionResponse;
 import com.finance.dto.ReportDtos.IncomeExpenseTrendItem;
 import com.finance.dto.ReportDtos.InsightItem;
+import com.finance.exception.BadRequestException;
 import com.finance.services.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +32,7 @@ public class ReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        validateDateRange(startDate, endDate);
         return reportService.categorySpend(startDate, endDate);
     }
 
@@ -40,6 +42,7 @@ public class ReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        validateDateRange(startDate, endDate);
         return reportService.incomeExpenseTrend(startDate, endDate);
     }
 
@@ -49,6 +52,7 @@ public class ReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        validateDateRange(startDate, endDate);
         return reportService.accountBalanceTrend(startDate, endDate);
     }
 
@@ -62,5 +66,11 @@ public class ReportController {
     @Operation(summary = "Projected balance for the next 30 days")
     public FutureBalancePredictionResponse futureBalancePrediction() {
         return reportService.futureBalancePrediction();
+    }
+
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must be on or before endDate");
+        }
     }
 }
