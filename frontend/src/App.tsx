@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { api } from "./services/api";
 import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
@@ -16,6 +18,12 @@ import { useAuth } from "./hooks/useAuth";
 
 export default function App() {
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    void api.get("/actuator/health").catch(() => {
+      // Warm-up is best-effort only. Ignore sleeping backend/network errors.
+    });
+  }, []);
 
   return (
     <Routes>
