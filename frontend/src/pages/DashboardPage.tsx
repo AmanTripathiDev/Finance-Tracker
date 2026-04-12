@@ -4,6 +4,7 @@ import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Responsive
 import { Panel } from "../components/Panel";
 import { StatsCard } from "../components/StatsCard";
 import { financeService } from "../services/financeService";
+import { useAuthStore } from "../store/authStore";
 import { buildMonthToDateRange } from "../features/reports/dateRange";
 import { formatCurrency, formatDate } from "../utils/format";
 
@@ -56,6 +57,7 @@ const insightTypeIcons: Record<string, string> = {
 };
 
 export const DashboardPage = () => {
+  const isGuest = useAuthStore((state) => state.isGuest);
   const range = useMemo(() => buildMonthToDateRange(), []);
   const accountsQuery = useQuery({ queryKey: ["accounts"], queryFn: financeService.getAccounts });
   const budgetsQuery = useQuery({ queryKey: ["budgets"], queryFn: financeService.getBudgets });
@@ -94,6 +96,19 @@ export const DashboardPage = () => {
 
   return (
     <div className="space-y-8">
+      {isGuest ? (
+        <section className="rounded-2xl border border-accent/15 bg-gradient-to-r from-accent/10 via-white to-accent2/10 px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-accent/20 bg-white/80 text-sm text-accent">
+              🚀
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-ink">You are using a demo account</p>
+              <p className="text-xs text-muted">Changes are isolated for exploration and no signup is required.</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
           label="Month Income"

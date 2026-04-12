@@ -2,10 +2,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
+import { loginSchema, type LoginFormValues } from "../features/auth/schema";
 import { financeService } from "../services/financeService";
 import { useAuthStore } from "../store/authStore";
 import type { AuthResponse } from "../types";
-import { loginSchema, type LoginFormValues } from "../features/auth/schema";
+import { extractApiError } from "../utils/apiError";
+
+const guestCredentials: LoginFormValues = {
+  email: "guest@demo.com",
+  password: "guest123",
+};
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -13,6 +19,7 @@ export const LoginPage = () => {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -22,10 +29,21 @@ export const LoginPage = () => {
   const mutation = useMutation({
     mutationFn: async (values: LoginFormValues) => (await financeService.login(values)).data as AuthResponse,
     onSuccess: (data) => {
-      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
+      const isGuest = data.user.email.toLowerCase() === guestCredentials.email;
+      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user, isGuest });
       navigate("/");
     },
   });
+
+  const apiError = mutation.isError
+    ? extractApiError(mutation.error, "Login failed. Check your credentials and API availability.")
+    : null;
+
+  const handleGuestLogin = () => {
+    setValue("email", guestCredentials.email, { shouldDirty: true, shouldTouch: true });
+    setValue("password", guestCredentials.password, { shouldDirty: true, shouldTouch: true });
+    mutation.mutate(guestCredentials);
+  };
 
   return (
     <div className="auth-shell flex min-h-screen items-center justify-center px-4 py-8">
@@ -52,7 +70,7 @@ export const LoginPage = () => {
               </Link>
             </div>
           </div>
-          {mutation.isError ? <p className="text-sm text-danger">Login failed. Check your credentials and API availability.</p> : null}
+          {apiError ? <p className="text-sm text-danger">{apiError.message}</p> : null}
           <button
             type="submit"
             disabled={mutation.isPending}
@@ -60,6 +78,16 @@ export const LoginPage = () => {
           >
             {mutation.isPending ? "Signing in..." : "Login"}
           </button>
+          <button
+            type="button"
+            title="No signup required"
+            disabled={mutation.isPending}
+            onClick={handleGuestLogin}
+            className="w-full rounded-full border border-line bg-white/80 px-5 py-3 font-semibold text-ink transition hover:border-accent/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {mutation.isPending ? "Signing in..." : "🚀 Try as Guest"}
+          </button>
+          <p className="text-center text-xs uppercase tracking-[0.14em] text-muted">No signup required</p>
         </form>
 
         <p className="mt-7 text-sm text-muted">

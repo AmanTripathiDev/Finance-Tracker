@@ -6,7 +6,8 @@ type AuthState = {
   accessToken: string | null;
   refreshToken: string | null;
   user: User | null;
-  setSession: (payload: { accessToken: string; refreshToken: string; user: User }) => void;
+  isGuest: boolean;
+  setSession: (payload: { accessToken: string; refreshToken: string; user: User; isGuest?: boolean }) => void;
   clearSession: () => void;
 };
 
@@ -16,8 +17,9 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       user: null,
-      setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
-      clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
+      isGuest: false,
+      setSession: ({ accessToken, refreshToken, user, isGuest = false }) => set({ accessToken, refreshToken, user, isGuest }),
+      clearSession: () => set({ accessToken: null, refreshToken: null, user: null, isGuest: false }),
     }),
     { name: "finance-tracker-auth" },
   ),

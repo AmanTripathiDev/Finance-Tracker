@@ -2,11 +2,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
+import { signupSchema, type SignupFormValues } from "../features/auth/schema";
 import { financeService } from "../services/financeService";
 import { useAuthStore } from "../store/authStore";
 import type { AuthResponse } from "../types";
-import { signupSchema, type SignupFormValues } from "../features/auth/schema";
 import { extractApiError } from "../utils/apiError";
+
+const guestCredentials = {
+  email: "guest@demo.com",
+  password: "guest123",
+};
 
 export const SignupPage = () => {
   const navigate = useNavigate();
@@ -30,14 +35,22 @@ export const SignupPage = () => {
         })
       ).data as AuthResponse,
     onSuccess: (data) => {
-      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
+      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user, isGuest: false });
       navigate("/");
     },
   });
 
-  const apiError = mutation.isError
-    ? extractApiError(mutation.error, "Signup failed. Please try again.")
-    : null;
+  const guestMutation = useMutation({
+    mutationFn: async () => (await financeService.login(guestCredentials)).data as AuthResponse,
+    onSuccess: (data) => {
+      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user, isGuest: true });
+      navigate("/");
+    },
+  });
+
+  const apiError = mutation.isError ? extractApiError(mutation.error, "Signup failed. Please try again.") : null;
+  const guestError = guestMutation.isError ? extractApiError(guestMutation.error, "Guest login failed. Please try again.") : null;
+  const isBusy = mutation.isPending || guestMutation.isPending;
 
   return (
     <div className="auth-shell flex min-h-screen items-center justify-center px-4 py-8">
@@ -71,13 +84,24 @@ export const SignupPage = () => {
           </div>
           <div className="sm:col-span-2">
             {apiError ? <p className="mb-3 text-sm text-danger">{apiError.message}</p> : null}
+            {guestError ? <p className="mb-3 text-sm text-danger">{guestError.message}</p> : null}
             <button
               type="submit"
-              disabled={mutation.isPending}
+              disabled={isBusy}
               className="auth-cta w-full rounded-full bg-accent px-5 py-3 font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
             >
               {mutation.isPending ? "Creating account..." : "Sign up"}
             </button>
+            <button
+              type="button"
+              title="No signup required"
+              disabled={isBusy}
+              onClick={() => guestMutation.mutate()}
+              className="mt-3 w-full rounded-full border border-line bg-white/80 px-5 py-3 font-semibold text-ink transition hover:border-accent/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {guestMutation.isPending ? "Signing in..." : "🚀 Try as Guest"}
+            </button>
+            <p className="mt-3 text-center text-xs uppercase tracking-[0.14em] text-muted">No signup required</p>
           </div>
         </form>
 

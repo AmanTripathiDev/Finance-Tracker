@@ -42,7 +42,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const { refreshToken, user, clearSession, setSession } = useAuthStore.getState();
+    const { refreshToken, user, isGuest, clearSession, setSession } = useAuthStore.getState();
     if (!refreshToken || !user) {
       clearSession();
       return Promise.reject(error);
@@ -70,6 +70,7 @@ api.interceptors.response.use(
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         user: data.user,
+        isGuest,
       });
       resolveQueue(data.accessToken);
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
