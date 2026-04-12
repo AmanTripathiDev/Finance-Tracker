@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+
+BASE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_JAR="$BASE_DIR/.mvn/wrapper/maven-wrapper.jar"
+JAVA_EXE="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+JAVA_WRAPPER_JAR="$WRAPPER_JAR"
+MAVEN_PROJECT_DIR="$BASE_DIR"
+
+if [ -n "$JAVA_HOME" ] && [ ! -x "$JAVA_EXE" ] && [ -x "$JAVA_HOME/bin/java.exe" ]; then
+  JAVA_EXE="$JAVA_HOME/bin/java.exe"
+fi
+
+case "$JAVA_EXE" in
+  *.exe)
+    JAVA_WRAPPER_JAR=$(wslpath -w "$WRAPPER_JAR")
+    MAVEN_PROJECT_DIR=$(wslpath -w "$MAVEN_PROJECT_DIR")
+    ;;
+esac
+
+if [ ! -f "$WRAPPER_JAR" ]; then
+  echo "Missing $WRAPPER_JAR" >&2
+  exit 1
+fi
+
+exec "$JAVA_EXE" \
+  -classpath "$JAVA_WRAPPER_JAR" \
+  -Dmaven.multiModuleProjectDirectory="$MAVEN_PROJECT_DIR" \
+  org.apache.maven.wrapper.MavenWrapperMain "$@"
