@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,7 @@ public class ReportService {
     private final CurrentUserService currentUserService;
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "reports", key = "'category-spend:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public CategorySpendResponse categorySpend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
         var range = normalizeRange(startDate, endDate);
@@ -60,6 +62,7 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "reports", key = "'income-vs-expense:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public List<IncomeExpenseTrendItem> incomeExpenseTrend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
         var range = normalizeRange(startDate, endDate);
@@ -88,6 +91,7 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "reports", key = "'account-balance-trend:' + @currentUserService.getCurrentUserId() + ':' + T(java.util.Objects).hash(#startDate, #endDate)")
     public List<AccountBalanceTrendItem> accountBalanceTrend(LocalDate startDate, LocalDate endDate) {
         UUID userId = currentUserService.getCurrentUserId();
         var range = normalizeRange(startDate, endDate);
@@ -115,6 +119,7 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "reports", key = "'insights:' + @currentUserService.getCurrentUserId()")
     public List<InsightItem> insights() {
         UUID userId = currentUserService.getCurrentUserId();
         YearMonth currentMonth = YearMonth.now();
@@ -137,6 +142,7 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "reports", key = "'future-balance-prediction:' + @currentUserService.getCurrentUserId()")
     public FutureBalancePredictionResponse futureBalancePrediction() {
         UUID userId = currentUserService.getCurrentUserId();
         int horizonDays = 30;

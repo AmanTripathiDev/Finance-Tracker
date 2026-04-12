@@ -11,7 +11,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +22,7 @@ public class LedgerService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
 
+    @Transactional
     public Transaction createTransaction(User user,
                                          Account account,
                                          Category category,
@@ -31,7 +34,11 @@ public class LedgerService {
                                          String paymentMethod,
                                          UUID transferGroupId) {
         applyEffect(account, type, amount);
-        accountRepository.save(account);
+        try {
+            accountRepository.saveAndFlush(account);
+        } catch (ObjectOptimisticLockingFailureException exception) {
+            throw exception;
+        }
 
         Transaction transaction = new Transaction();
         transaction.setUser(user);
@@ -44,13 +51,14 @@ public class LedgerService {
         transaction.setNote(note);
         transaction.setPaymentMethod(paymentMethod);
         transaction.setTransferGroupId(transferGroupId);
-        return transactionRepository.save(transaction);
+        return transactionRepository.saveAndFlush(transaction);
     }
 
+    @Transactional
     public void reverseTransaction(Transaction transaction) {
         Account account = transaction.getAccount();
         reverseEffect(account, transaction.getType(), transaction.getAmount());
-        accountRepository.save(account);
+        accountRepository.saveAndFlush(account);
     }
 
     public void applyEffect(Account account, TransactionType type, BigDecimal amount) {

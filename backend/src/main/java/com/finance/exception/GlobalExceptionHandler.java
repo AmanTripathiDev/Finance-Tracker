@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -33,6 +34,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiErrorResponse> handleUnauthorized(UnauthorizedException exception) {
         return build(HttpStatus.UNAUTHORIZED, exception.getMessage(), Map.of());
+    }
+
+    @ExceptionHandler({ConflictException.class, ObjectOptimisticLockingFailureException.class})
+    public ResponseEntity<ApiErrorResponse> handleConflict(RuntimeException exception) {
+        return build(HttpStatus.CONFLICT, exception.getMessage(), Map.of());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -68,6 +68,10 @@ public class JwtService {
         return accessTokenExpirationSeconds;
     }
 
+    public long getRefreshTokenExpirationSeconds() {
+        return refreshTokenExpirationSeconds;
+    }
+
     private String buildToken(FinanceUserPrincipal principal, Key key, long expiresInSeconds, Map<String, Object> claims) {
         Instant now = Instant.now();
         return Jwts.builder()

@@ -29,6 +29,7 @@ public class AccountService {
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final LedgerService ledgerService;
+    private final AnalyticsCacheService analyticsCacheService;
 
     @Transactional(readOnly = true)
     public List<AccountResponse> getAll() {
@@ -98,6 +99,7 @@ public class AccountService {
                 "TRANSFER",
                 transferGroupId
         );
+        analyticsCacheService.evictUserAnalytics(userId);
         log.info("Transferred {} from account {} to {}", request.amount(), source.getId(), target.getId());
     }
 

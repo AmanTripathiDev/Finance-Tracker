@@ -6,6 +6,7 @@ import { financeService } from "../services/financeService";
 import { useAuthStore } from "../store/authStore";
 import type { AuthResponse } from "../types";
 import { signupSchema, type SignupFormValues } from "../features/auth/schema";
+import { extractApiError } from "../utils/apiError";
 
 export const SignupPage = () => {
   const navigate = useNavigate();
@@ -33,6 +34,10 @@ export const SignupPage = () => {
       navigate("/");
     },
   });
+
+  const apiError = mutation.isError
+    ? extractApiError(mutation.error, "Signup failed. Please try again.")
+    : null;
 
   return (
     <div className="auth-shell flex min-h-screen items-center justify-center px-4 py-8">
@@ -65,7 +70,7 @@ export const SignupPage = () => {
             {errors.confirmPassword ? <p className="mt-1 text-sm text-danger">{errors.confirmPassword.message}</p> : null}
           </div>
           <div className="sm:col-span-2">
-            {mutation.isError ? <p className="mb-3 text-sm text-danger">Signup failed. The email may already be in use.</p> : null}
+            {apiError ? <p className="mb-3 text-sm text-danger">{apiError.message}</p> : null}
             <button
               type="submit"
               disabled={mutation.isPending}

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,7 @@ public class TransactionService {
     private final AccountService accountService;
     private final CategoryService categoryService;
     private final LedgerService ledgerService;
+    private final AnalyticsCacheService analyticsCacheService;
 
     @Transactional(readOnly = true)
     public Page<TransactionResponse> search(String search,
@@ -80,6 +82,7 @@ public class TransactionService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"reports", "dashboard"}, allEntries = true)
     public TransactionResponse create(TransactionRequest request) {
         UUID userId = currentUserService.getCurrentUserId();
         validateManualTransactionType(request.type());
@@ -99,6 +102,7 @@ public class TransactionService {
                 request.paymentMethod(),
                 null
         );
+        analyticsCacheService.evictUserAnalytics(userId);
         return toResponse(transaction);
     }
 
@@ -108,6 +112,7 @@ public class TransactionService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"reports", "dashboard"}, allEntries = true)
     public TransactionResponse update(UUID id, TransactionRequest request) {
         UUID userId = currentUserService.getCurrentUserId();
         validateManualTransactionType(request.type());
@@ -128,10 +133,13 @@ public class TransactionService {
         existing.setPaymentMethod(request.paymentMethod());
 
         ledgerService.applyEffect(existing.getAccount(), existing.getType(), existing.getAmount());
-        return toResponse(transactionRepository.save(existing));
+        TransactionResponse response = toResponse(transactionRepository.save(existing));
+        analyticsCacheService.evictUserAnalytics(userId);
+        return response;
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"reports", "dashboard"}, allEntries = true)
     public void delete(UUID id) {
         Transaction transaction = getTransaction(id, currentUserService.getCurrentUserId());
         if (transaction.getType() == TransactionType.TRANSFER_IN || transaction.getType() == TransactionType.TRANSFER_OUT) {
@@ -139,6 +147,7 @@ public class TransactionService {
         }
         ledgerService.reverseTransaction(transaction);
         transactionRepository.delete(transaction);
+        analyticsCacheService.evictUserAnalytics(currentUserService.getCurrentUserId());
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +164,9 @@ public class TransactionService {
                                                   BigDecimal amount,
                                                   LocalDate date,
                                                   String note) {
-        return ledgerService.createTransaction(user, account, category, type, amount, date, null, note, "AUTO", null);
+        Transaction transaction = ledgerService.createTransaction(user, account, category, type, amount, date, null, note, "AUTO", null);
+        analyticsCacheService.evictUserAnalytics(user.getId());
+        return transaction;
     }
 
     private void validateManualTransactionType(TransactionType type) {

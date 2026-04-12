@@ -4,18 +4,24 @@ import com.finance.dto.AuthDtos.AuthResponse;
 import com.finance.dto.AuthDtos.ForgotPasswordRequest;
 import com.finance.dto.AuthDtos.LoginRequest;
 import com.finance.dto.AuthDtos.MessageResponse;
+import com.finance.dto.AuthDtos.LogoutRequest;
 import com.finance.dto.AuthDtos.RefreshTokenRequest;
 import com.finance.dto.AuthDtos.RegisterRequest;
 import com.finance.dto.AuthDtos.ResetPasswordRequest;
 import com.finance.dto.AuthDtos.UserResponse;
 import com.finance.entities.PasswordResetToken;
+import com.finance.entities.RefreshToken;
 import com.finance.entities.User;
 import com.finance.exception.BadRequestException;
 import com.finance.exception.UnauthorizedException;
 import com.finance.repositories.PasswordResetTokenRepository;
+import com.finance.repositories.RefreshTokenRepository;
 import com.finance.repositories.UserRepository;
 import com.finance.security.FinanceUserPrincipal;
 import com.finance.security.JwtService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -38,6 +44,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
@@ -45,12 +52,13 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmailIgnoreCase(request.email())) {
+        String normalizedEmail = request.email().trim().toLowerCase();
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new BadRequestException("Email is already registered");
         }
 
         User user = new User();
-        user.setEmail(request.email().trim().toLowerCase());
+        user.setEmail(normalizedEmail);
         user.setDisplayName(request.displayName().trim());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         userRepository.save(user);
@@ -67,21 +75,23 @@ public class AuthService {
         return buildAuthResponse(new FinanceUserPrincipal(user.getId(), user.getEmail(), user.getPasswordHash()), user);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse refresh(RefreshTokenRequest request) {
-        String refreshToken = request.refreshToken();
-        String email;
-        try {
-            email = jwtService.extractUsername(refreshToken, true);
-        } catch (Exception exception) {
-            throw new UnauthorizedException("Invalid refresh token");
-        }
-        User user = userRepository.findByEmailIgnoreCase(email).orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
+        RefreshToken storedToken = validateStoredRefreshToken(request.refreshToken());
+        User user = storedToken.getUser();
         FinanceUserPrincipal principal = new FinanceUserPrincipal(user.getId(), user.getEmail(), user.getPasswordHash());
-        if (!jwtService.isTokenValid(refreshToken, principal, true)) {
-            throw new UnauthorizedException("Refresh token expired or invalid");
+        return issueTokens(principal, user, true);
+    }
+
+    @Transactional
+    public MessageResponse logout(LogoutRequest request) {
+        try {
+            String tokenHash = hashRefreshToken(request.refreshToken());
+            refreshTokenRepository.deleteByTokenHashAndUser_Id(tokenHash, jwtService.extractUserId(request.refreshToken(), true));
+        } catch (Exception exception) {
+            // Treat logout as idempotent; invalid tokens are simply ignored.
         }
-        return buildAuthResponse(principal, user);
+        return new MessageResponse("Logged out successfully");
     }
 
     @Transactional
@@ -124,12 +134,67 @@ public class AuthService {
     }
 
     private AuthResponse buildAuthResponse(FinanceUserPrincipal principal, User user) {
+        return issueTokens(principal, user, false);
+    }
+
+    private AuthResponse issueTokens(FinanceUserPrincipal principal, User user, boolean rotation) {
+        String accessToken = jwtService.generateAccessToken(principal);
+        String refreshToken = jwtService.generateRefreshToken(principal);
+
+        refreshTokenRepository.deleteByUser_Id(user.getId());
+        RefreshToken storedToken = new RefreshToken();
+        storedToken.setUser(user);
+        storedToken.setTokenHash(hashRefreshToken(refreshToken));
+        storedToken.setExpiryTime(OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(jwtService.getRefreshTokenExpirationSeconds()));
+        storedToken.setRevoked(false);
+        refreshTokenRepository.save(storedToken);
+
+        if (rotation) {
+            log.info("Rotated refresh token for user {}", user.getEmail());
+        }
+
         return new AuthResponse(
-                jwtService.generateAccessToken(principal),
-                jwtService.generateRefreshToken(principal),
+                accessToken,
+                refreshToken,
                 "Bearer",
                 jwtService.getAccessTokenExpirationSeconds(),
                 new UserResponse(user.getId(), user.getEmail(), user.getDisplayName())
         );
+    }
+
+    private RefreshToken validateStoredRefreshToken(String refreshToken) {
+        UUID userId;
+        try {
+            userId = jwtService.extractUserId(refreshToken, true);
+        } catch (Exception exception) {
+            throw new UnauthorizedException("Invalid refresh token");
+        }
+
+        RefreshToken storedToken = refreshTokenRepository.findByTokenHash(hashRefreshToken(refreshToken))
+                .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
+
+        if (storedToken.isRevoked()
+                || !storedToken.getUser().getId().equals(userId)
+                || storedToken.getExpiryTime().isBefore(OffsetDateTime.now(ZoneOffset.UTC))) {
+            refreshTokenRepository.delete(storedToken);
+            throw new UnauthorizedException("Refresh token expired or invalid");
+        }
+
+        refreshTokenRepository.delete(storedToken);
+        return storedToken;
+    }
+
+    private String hashRefreshToken(String refreshToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashed = digest.digest(refreshToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte b : hashed) {
+                builder.append(String.format("%02x", b));
+            }
+            return builder.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 algorithm not available", exception);
+        }
     }
 }

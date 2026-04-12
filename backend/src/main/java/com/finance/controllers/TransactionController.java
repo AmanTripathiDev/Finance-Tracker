@@ -4,6 +4,8 @@ import com.finance.dto.TransactionDtos.TransactionRequest;
 import com.finance.dto.TransactionDtos.TransactionResponse;
 import com.finance.entities.TransactionType;
 import com.finance.services.TransactionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -25,11 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/transactions")
 @RequiredArgsConstructor
+@Tag(name = "Transactions", description = "Transaction search and ledger mutation APIs")
 public class TransactionController {
 
     private final TransactionService transactionService;
 
     @GetMapping
+    @Operation(summary = "Search and paginate transactions")
     public Page<TransactionResponse> getAll(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID categoryId,
@@ -45,22 +49,26 @@ public class TransactionController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Create a transaction")
     public TransactionResponse create(@Valid @RequestBody TransactionRequest request) {
         return transactionService.create(request);
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get a transaction by id")
     public TransactionResponse getById(@PathVariable UUID id) {
         return transactionService.getById(id);
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Update a transaction")
     public TransactionResponse update(@PathVariable UUID id, @Valid @RequestBody TransactionRequest request) {
         return transactionService.update(id, request);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Delete a transaction")
     public void delete(@PathVariable UUID id) {
         transactionService.delete(id);
     }

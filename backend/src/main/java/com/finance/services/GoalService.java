@@ -29,6 +29,7 @@ public class GoalService {
     private final CurrentUserService currentUserService;
     private final AccountService accountService;
     private final LedgerService ledgerService;
+    private final AnalyticsCacheService analyticsCacheService;
 
     @Transactional(readOnly = true)
     public List<GoalResponse> getAll() {
@@ -84,6 +85,7 @@ public class GoalService {
                 "GOAL",
                 UUID.randomUUID()
         );
+        analyticsCacheService.evictUserAnalytics(userId);
         return toResponse(goalRepository.save(goal));
     }
 
@@ -109,6 +111,7 @@ public class GoalService {
                 "GOAL",
                 UUID.randomUUID()
         );
+        analyticsCacheService.evictUserAnalytics(userId);
         return toResponse(goalRepository.save(goal));
     }
 

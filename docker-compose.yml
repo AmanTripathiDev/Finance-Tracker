@@ -12,18 +12,27 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
 
+  redis:
+    image: redis:7-alpine
+    container_name: finance-tracker-redis
+    ports:
+      - "6379:6379"
+
   backend:
     build:
       context: ./backend
     container_name: finance-tracker-backend
     depends_on:
       - postgres
+      - redis
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/finance_tracker
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       CORS_ALLOWED_ORIGINS: http://localhost:4173,http://localhost:5173,http://127.0.0.1:4173,http://127.0.0.1:5173
     ports:
       - "8080:8080"

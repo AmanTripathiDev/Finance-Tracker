@@ -27,6 +27,7 @@ public class RecurringTransactionService {
     private final AccountService accountService;
     private final CategoryService categoryService;
     private final TransactionService transactionService;
+    private final AnalyticsCacheService analyticsCacheService;
 
     @Transactional(readOnly = true)
     public List<RecurringTransactionResponse> getAll() {
@@ -91,6 +92,7 @@ public class RecurringTransactionService {
                 recurring.getNextRunDate(),
                 "Auto-created from recurring transaction: " + recurring.getTitle()
         );
+        analyticsCacheService.evictUserAnalytics(recurring.getUser().getId());
 
         recurring.setNextRunDate(nextDate(recurring.getNextRunDate(), recurring.getFrequency()));
         if (recurring.getEndDate() != null && recurring.getNextRunDate().isAfter(recurring.getEndDate())) {

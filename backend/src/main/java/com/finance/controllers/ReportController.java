@@ -6,6 +6,8 @@ import com.finance.dto.ReportDtos.FutureBalancePredictionResponse;
 import com.finance.dto.ReportDtos.IncomeExpenseTrendItem;
 import com.finance.dto.ReportDtos.InsightItem;
 import com.finance.services.ReportService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -18,11 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/reports")
 @RequiredArgsConstructor
+@Tag(name = "Reports", description = "Dashboard analytics, spending reports, and insights")
 public class ReportController {
 
     private final ReportService reportService;
 
     @GetMapping("/category-spend")
+    @Operation(summary = "Spending by category for a date range")
     public CategorySpendResponse categorySpend(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
@@ -31,6 +35,7 @@ public class ReportController {
     }
 
     @GetMapping("/income-vs-expense")
+    @Operation(summary = "Daily income versus expense trend")
     public List<IncomeExpenseTrendItem> incomeVsExpense(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
@@ -39,6 +44,7 @@ public class ReportController {
     }
 
     @GetMapping("/account-balance-trend")
+    @Operation(summary = "Running balance trend by account")
     public List<AccountBalanceTrendItem> accountBalanceTrend(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
@@ -47,11 +53,13 @@ public class ReportController {
     }
 
     @GetMapping("/insights")
+    @Operation(summary = "Generated spending and budgeting insights")
     public List<InsightItem> insights() {
         return reportService.insights();
     }
 
     @GetMapping("/future-balance-prediction")
+    @Operation(summary = "Projected balance for the next 30 days")
     public FutureBalancePredictionResponse futureBalancePrediction() {
         return reportService.futureBalancePrediction();
     }
