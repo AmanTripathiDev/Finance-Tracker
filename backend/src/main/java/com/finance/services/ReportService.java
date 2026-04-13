@@ -29,12 +29,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReportService {
 
     private final TransactionRepository transactionRepository;
@@ -49,8 +51,11 @@ public class ReportService {
         UUID userId = currentUserService.getCurrentUserId();
         LocalDate[] range = normalizeRange(startDate, endDate);
         Map<String, BigDecimal> grouped = new LinkedHashMap<>();
+        List<Transaction> transactions = findTransactionsInRange(userId, range[0], range[1]);
 
-        findTransactionsInRange(userId, range[0], range[1]).stream()
+        logAnalyticsFetch("categorySpend", userId, range[0], range[1], transactions);
+
+        transactions.stream()
                 .filter(tx -> tx.getType() == TransactionType.EXPENSE)
                 .forEach(tx -> grouped.merge(categoryName(tx), amountOrZero(tx.getAmount()), BigDecimal::add));
 
@@ -68,8 +73,11 @@ public class ReportService {
         UUID userId = currentUserService.getCurrentUserId();
         LocalDate[] range = normalizeRange(startDate, endDate);
         Map<LocalDate, IncomeExpenseTrendAccumulator> grouped = new LinkedHashMap<>();
+        List<Transaction> transactions = findTransactionsInRange(userId, range[0], range[1]);
 
-        findTransactionsInRange(userId, range[0], range[1]).stream()
+        logAnalyticsFetch("incomeExpenseTrend", userId, range[0], range[1], transactions);
+
+        transactions.stream()
                 .filter(tx -> tx.getTransactionDate() != null)
                 .sorted(Comparator.comparing(Transaction::getTransactionDate))
                 .forEach(tx -> {
@@ -167,7 +175,10 @@ public class ReportService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         LocalDate spendStart = today.minusDays(horizonDays - 1L);
-        BigDecimal totalRecentExpense = findTransactionsInRange(userId, spendStart, today).stream()
+        List<Transaction> recentTransactions = findTransactionsInRange(userId, spendStart, today);
+        logAnalyticsFetch("futureBalancePrediction", userId, spendStart, today, recentTransactions);
+
+        BigDecimal totalRecentExpense = recentTransactions.stream()
                 .filter(tx -> tx.getType() == TransactionType.EXPENSE)
                 .map(Transaction::getAmount)
                 .filter(Objects::nonNull)
@@ -439,6 +450,35 @@ public class ReportService {
         return transactionRepository.findByUserIdAndTransactionDateBetween(userId, startDate, endDate).stream()
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private void logAnalyticsFetch(String operation,
+                                   UUID userId,
+                                   LocalDate startDate,
+                                   LocalDate endDate,
+                                   List<Transaction> transactions) {
+        long incomeCount = transactions.stream().filter(tx -> tx.getType() == TransactionType.INCOME).count();
+        long expenseCount = transactions.stream().filter(tx -> tx.getType() == TransactionType.EXPENSE).count();
+        log.info(
+                "Analytics {} for userId={} range={}..{} fetched {} transactions (income={}, expense={})",
+                operation,
+                userId,
+                startDate,
+                endDate,
+                transactions.size(),
+                incomeCount,
+                expenseCount
+        );
+        transactions.stream()
+                .limit(10)
+                .forEach(tx -> log.info(
+                        "Analytics {} tx id={} date={} type={} amount={}",
+                        operation,
+                        tx.getId(),
+                        tx.getTransactionDate(),
+                        tx.getType(),
+                        tx.getAmount()
+                ));
     }
 
     private String formatCurrency(BigDecimal amount) {

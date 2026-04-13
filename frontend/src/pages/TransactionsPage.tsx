@@ -7,6 +7,18 @@ import { financeService } from "../services/financeService";
 import { transactionSchema, type TransactionFormValues } from "../features/transactions/schema";
 import { formatCurrency } from "../utils/format";
 import { transactionTypeOptions } from "../utils/constants";
+import { formatLocalDateForInput } from "../utils/date";
+
+const defaultTransactionValues = (): TransactionFormValues => ({
+  accountId: "",
+  categoryId: "",
+  type: "EXPENSE",
+  amount: 0,
+  transactionDate: formatLocalDateForInput(new Date()),
+  merchant: "",
+  note: "",
+  paymentMethod: "",
+});
 
 export const TransactionsPage = () => {
   const queryClient = useQueryClient();
@@ -40,16 +52,7 @@ export const TransactionsPage = () => {
     formState: { errors },
   } = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionSchema),
-    defaultValues: {
-      accountId: "",
-      categoryId: "",
-      type: "EXPENSE",
-      amount: 0,
-      transactionDate: new Date().toISOString().slice(0, 10),
-      merchant: "",
-      note: "",
-      paymentMethod: "",
-    },
+    defaultValues: defaultTransactionValues(),
   });
 
   const saveMutation = useMutation({
@@ -63,16 +66,8 @@ export const TransactionsPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      reset({
-        accountId: "",
-        categoryId: "",
-        type: "EXPENSE",
-        amount: 0,
-        transactionDate: new Date().toISOString().slice(0, 10),
-        merchant: "",
-        note: "",
-        paymentMethod: "",
-      });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      reset(defaultTransactionValues());
       setEditingId(null);
     },
   });
@@ -82,6 +77,7 @@ export const TransactionsPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
     },
   });
 

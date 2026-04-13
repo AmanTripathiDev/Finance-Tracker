@@ -1,6 +1,6 @@
 spring:
   cache:
-    type: redis
+    type: ${SPRING_CACHE_TYPE:${CACHE_TYPE:simple}}
   datasource:
     url: ${SPRING_DATASOURCE_URL:${DB_URL:jdbc:postgresql://localhost:5432/finance_tracker}}
     username: ${SPRING_DATASOURCE_USERNAME:${DB_USERNAME:postgres}}
