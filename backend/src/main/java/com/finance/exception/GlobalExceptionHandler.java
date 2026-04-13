@@ -6,7 +6,9 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -53,6 +55,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException exception, HttpServletRequest request) {
         log.error("Data integrity violation for {} {}", request.getMethod(), request.getRequestURI(), exception);
         return build(HttpStatus.BAD_REQUEST, "Request violates data constraints", Map.of());
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataAccess(DataAccessException exception, HttpServletRequest request) {
+        log.error("Database access failure for {} {}", request.getMethod(), request.getRequestURI(), exception);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Database operation failed", Map.of());
+    }
+
+    @ExceptionHandler(RedisConnectionFailureException.class)
+    public ResponseEntity<ApiErrorResponse> handleRedisFailure(RedisConnectionFailureException exception, HttpServletRequest request) {
+        log.error("Redis connection failure for {} {}", request.getMethod(), request.getRequestURI(), exception);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Cache infrastructure is unavailable", Map.of());
     }
 
     @ExceptionHandler(UnauthorizedException.class)

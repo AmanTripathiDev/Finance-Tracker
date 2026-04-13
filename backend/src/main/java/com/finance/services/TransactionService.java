@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
@@ -84,26 +86,51 @@ public class TransactionService {
     @Transactional
     @CacheEvict(cacheNames = {"reports", "dashboard"}, allEntries = true)
     public TransactionResponse create(TransactionRequest request) {
+        validateRequestPayload(request);
         UUID userId = currentUserService.getCurrentUserId();
-        validateManualTransactionType(request.type());
-        User user = getUser(userId);
-        var account = accountService.getAccount(request.accountId(), userId);
-        Category category = request.categoryId() == null ? null : categoryService.getCategory(request.categoryId(), userId);
-
-        Transaction transaction = ledgerService.createTransaction(
-                user,
-                account,
-                category,
+        log.info(
+                "Creating transaction for userId={}, accountId={}, categoryId={}, type={}, amount={}, transactionDate={}",
+                userId,
+                request.accountId(),
+                request.categoryId(),
                 request.type(),
                 request.amount(),
-                request.transactionDate(),
-                request.merchant(),
-                request.note(),
-                request.paymentMethod(),
-                null
+                request.transactionDate()
         );
-        analyticsCacheService.evictUserAnalytics(userId);
-        return toResponse(transaction);
+        validateManualTransactionType(request.type());
+        try {
+            User user = getUser(userId);
+            var account = accountService.getAccount(request.accountId(), userId);
+            Category category = request.categoryId() == null ? null : categoryService.getCategory(request.categoryId(), userId);
+
+            Transaction transaction = ledgerService.createTransaction(
+                    user,
+                    account,
+                    category,
+                    request.type(),
+                    request.amount(),
+                    request.transactionDate(),
+                    request.merchant(),
+                    request.note(),
+                    request.paymentMethod(),
+                    null
+            );
+            analyticsCacheService.evictUserAnalytics(userId);
+            log.info("Transaction created successfully with id={} for userId={}", transaction.getId(), userId);
+            return toResponse(transaction);
+        } catch (RuntimeException exception) {
+            log.error(
+                    "Failed to create transaction for userId={}, accountId={}, categoryId={}, type={}, amount={}, transactionDate={}",
+                    userId,
+                    request.accountId(),
+                    request.categoryId(),
+                    request.type(),
+                    request.amount(),
+                    request.transactionDate(),
+                    exception
+            );
+            throw exception;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -172,6 +199,27 @@ public class TransactionService {
     private void validateManualTransactionType(TransactionType type) {
         if (type == TransactionType.TRANSFER_IN || type == TransactionType.TRANSFER_OUT) {
             throw new BadRequestException("Use the transfer endpoint for account transfers");
+        }
+    }
+
+    private void validateRequestPayload(TransactionRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Transaction request body is required");
+        }
+        if (request.accountId() == null) {
+            throw new BadRequestException("accountId is required");
+        }
+        if (request.type() == null) {
+            throw new BadRequestException("type is required");
+        }
+        if (request.amount() == null) {
+            throw new BadRequestException("amount is required");
+        }
+        if (request.amount().signum() <= 0) {
+            throw new BadRequestException("amount must be greater than zero");
+        }
+        if (request.transactionDate() == null) {
+            throw new BadRequestException("transactionDate is required");
         }
     }
 

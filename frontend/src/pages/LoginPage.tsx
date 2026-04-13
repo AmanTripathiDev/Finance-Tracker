@@ -91,7 +91,7 @@ export const LoginPage = () => {
             <div className="flex items-start gap-3 rounded-2xl border border-accent/15 bg-gradient-to-r from-accent/10 via-white to-accent2/10 px-4 py-3 text-sm text-ink shadow-sm">
               <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-accent/25 border-t-accent" />
               <div>
-                <p className="font-semibold text-ink">🚀 Starting server (first time may take 30 seconds)</p>
+                <p className="font-semibold text-ink">🚀 Starting server (first time may take 50-60 seconds)</p>
                 <p className="mt-1 text-xs text-muted">This usually happens when the backend is waking up from idle.</p>
               </div>
             </div>
